@@ -4,12 +4,12 @@ import pandas as pd
 """Can be applied to a 2D (no z-axis) coord file with lines in the format:
 Fp1 -29.4367 83.9171"""
 
-# Load and fix the content
+#Load co-ords
 file_path = './standard_1020_tweaked2D.elc' #Removed z co-ords and reformatted.
 with open(file_path, 'r') as file:
     content = file.readlines()
     
-# Parse electrode data
+#Parse electrode data
 electrodes = []
 coordinates = []
 for line in content:
@@ -19,15 +19,13 @@ for line in content:
 
 coordinates = np.array(coordinates)
 
-# Normalize coords to [0, 1]
+#Normalize coords to range 0-1
 min_coords = coordinates.min(axis=0)
 max_coords = coordinates.max(axis=0)
 normalized_coords = (coordinates - min_coords) / (max_coords - min_coords)
 
-# Define grid resolution
+#Scale normalized co-ords to a grid of chosen resolution
 grid_resolution = (9, 9)
-
-# Scale normalized coordinates and clamp them to grid limits
 grid_coords = np.floor(normalized_coords * np.array(grid_resolution)).astype(int)
 grid_coords = np.clip(grid_coords, 0, np.array(grid_resolution) - 1)
 
