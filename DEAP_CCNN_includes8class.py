@@ -134,7 +134,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                             #Early stopping callback
                             early_stopping = EarlyStopping(min_delta=0.00,
                                                            monitor='val_accuracy',
-                                                           patience=10, #5-10
+                                                           patience=10, #5-10 recommended
                                                            mode='max')
                             
                             #Set up the trainer with metrics

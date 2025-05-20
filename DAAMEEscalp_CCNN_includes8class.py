@@ -4,24 +4,59 @@ ClassifierTrainer (the latter as of TorchEEG 1.1.3)."""
 #Setup:
 
 import os
-from torcheeg.datasets import DEAPDataset
+from torcheeg.datasets import CSVFolderDataset
 from torcheeg import transforms
 from torcheeg.models import CCNN
 from torcheeg.trainers import ClassifierTrainer
 from torch.utils.data import DataLoader, Subset
 from pytorch_lightning.callbacks import EarlyStopping
 import numpy as np
-from torcheeg.datasets.constants import DEAP_CHANNEL_LOCATION_DICT
+from torcheeg.datasets.constants.utils import format_channel_location_dict
 from torcheeg.model_selection import * #NOTE: KFoldGroupbyTrial <== WATCH OUT FOR 'by'/'By'
-from torcheeg import transforms
+import mne
 import pytorch_lightning as pl #For tracking training epochs
 
-eeg_type = "DEAP"
+eeg_type = "DAAMEEscalp"
 model_name = "CCNN"
 model_type = "(CNN)"
 
 #Paths
-dataset_path = './data_preprocessed_python'
+dataset_csv_path = './dataConverted_norm/dataset_'
+
+def correctReadFn(file_path, **kwargs): #NOTE: IT FAILS WHEN ONLY ONE EPOCH PER FILE
+    file_path = file_path.replace("\\", "/")
+    raw = mne.io.read_raw(file_path)
+    #Convert raw to epochs
+    epochs = mne.make_fixed_length_epochs(raw, duration=1.015) #ASSUMING TRIMMED TO 28S
+    #Return EEG data
+    return epochs
+
+MYDATA_CHANNEL_LIST = ['Fp1', 'Fpz', 'Fp2', 'F7', 'F3', 'Fz', 'F4', 'F8', 'FC5', 'FC1', 'FC2', 'FC6',
+                       'M1', 'T7', 'C3', 'Cz', 'C4', 'T8', 'M2', 'CP5', 'CP1', 'CP2', 'CP6', 'P7',
+                       'P3', 'Pz', 'P4', 'P8', 'POz', 'O1', 'Oz', 'O2']
+
+#Grid from gridMaker
+MYDATA_LOCATION_LIST = [ ['-', 'P7', '-', 'M1', 'T7', 'FC5', 'F7', '-', '-'] ,
+                         ['-', 'P3', '-', '-', 'C3', '-', '-', 'F3', '-'] ,
+                         ['O1', '-', 'CP1', '-', '-', '-', 'FC1', '-', 'Fp1'] ,
+                         ['-', '-', '-', '-', '-', '-', '-', '-', '-'] ,
+                         ['Oz', 'Pz', '-', '-', 'Cz', '-', '-', 'Fz', 'Fpz'] ,
+                         ['-', '-', '-', '-', '-', '-', '-', '-', '-'] ,
+                         ['O2', '-', '-', 'CP2', '-', '-', 'FC2', '-', 'Fp2'] ,
+                         ['-', 'P4', '-', '-', '-', '-', '-', 'F4', '-'] ,
+                         ['-', 'P8', '-', 'M2', 'T8', 'FC2', '-', 'F8', '-'] ] 
+
+MYDATA_CHANNEL_LOCATION_DICT = format_channel_location_dict(MYDATA_CHANNEL_LIST, MYDATA_LOCATION_LIST)
+
+#Define dataset transformations
+offline_transform = transforms.Compose([transforms.BandDifferentialEntropy(
+                                        sampling_rate=200,
+                                        band_dict ={"delta": (1, 4),"theta": (4, 8), "alpha": (8, 13), "beta": (13, 30),"gamma": (30, 45)}),
+                                        transforms.ToGrid(MYDATA_CHANNEL_LOCATION_DICT)])
+online_transform=transforms.ToTensor()
+
+maps = [{'HV': 1, 'LV': 0}, {'HA': 1, 'LA': 0}, {'HD': 1, 'LD': 0},
+        {'LVLALD':0,'LVLAHD':1,'LVHALD':2,'LVHAHD':3,'HVLALD':4,'HVLAHD':5,'HVHALD':6,'HVHAHD':7,}]
 
 n_splits_KFolds = 10
 #Define split strategies
@@ -45,10 +80,6 @@ def ensure_tsv_header(file_path, header_fields):
 ensure_tsv_header(resultsFile, ["Label", "Split", "Accuracy (%)", "F1-score (%)"])
 ensure_tsv_header(epochResultsFile, ["Label", "Split", "Epochs (Mean)", "Epochs (STD)"])
 
-offline_transform = transforms.Compose([transforms.BandDifferentialEntropy(),
-                                        transforms.ToGrid(DEAP_CHANNEL_LOCATION_DICT)])
-online_transform=transforms.ToTensor()
-
 class EpochTracker(pl.Callback):
     def __init__(self):
         super().__init__()
@@ -65,28 +96,34 @@ num_classes = 2 #Default
 
 #Define model and training for each label
 for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]):
-        if label_name != "VAD": #In case you only want to focus on one.
+        if label_name != "VAD": #For now we just consider valence
             continue
         else:
-            
+                                
             print(f"\nTraining for {label_name} classification:")
             io_path = f'./cache_{eeg_type}_{label_name}_{model_name}'
-                       
+            
             if label_name == "VAD":
                 num_classes = 8
-                label_transform = transforms.Compose([transforms.Select(['valence','arousal','dominance']),
-                                                      transforms.Binary(5.0),
-                                                      transforms.BinariesToCategory()])
-            else:
-                label_transform = transforms.Compose([transforms.Select(label_name),
-                                                      transforms.Binary(5.0)])
+                
+            dataset_csv_path_thisDim = dataset_csv_path + label_name[:3] + ".csv"
             
-            dataset = DEAPDataset(io_path=io_path,
-                                  root_path=dataset_path,
-                                  offline_transform=offline_transform,
-                                  online_transform=online_transform,
-                                  label_transform=label_transform,
-                                  num_worker=7)
+            label_transform=transforms.Compose([transforms.Select('label'),
+                                                transforms.Mapping(maps[label_idx])])
+            
+            #Load dataset
+            dataset = CSVFolderDataset(io_path=io_path,
+                                       csv_path=dataset_csv_path_thisDim,    
+                                       read_fn = correctReadFn,
+                                       offline_transform=offline_transform,
+                                       online_transform=online_transform,
+                                       label_transform=label_transform,
+                                       num_worker=7,
+                                       io_mode="lmdb")
+            
+            dataset.info['subject_id'] = dataset.info['id'].str.extract(r'(sub-\d+)')
+            dataset.info['trial_id'] = dataset.info.index // 28
+            trial_counts = dataset.info.groupby('trial_id').size()
             
             #Loop over the splits
             for splitname, split in splits.items():
@@ -98,7 +135,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                 epochs_per_fold = []
                 
                 if isinstance(split, LeaveOneSubjectOut):
-                    n_splits = 32#len(dataset.info['subject_id'].unique())  #Num of subjs
+                    n_splits = len(dataset.info['subject_id'].unique())  #Num of subjs
                 else:
                     n_splits = n_splits_KFolds  #Default value for other strategies
         
@@ -110,7 +147,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                             train_test_clip_ids = train_test_dataset.info['clip_id'].unique()
                             train_val_clip_ids = train_val_dataset.info['clip_id'].unique()
                     
-                            #Find overlapping clip_ids between train_val and train_test
+                                #Find overlapping clip_ids between train_val and train_test
                             overlapping_clip_ids = set(train_val_clip_ids).intersection(train_test_clip_ids)
                             
                             #Filter train_test indices for overlapping clip_ids
@@ -125,9 +162,8 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                             val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
                             test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)                  
                         
-                        
                             #Define your model
-                            model = CCNN(num_classes=num_classes, in_channels=4, grid_size=(9, 9))
+                            model = CCNN(num_classes=num_classes, in_channels=5, grid_size=(9, 9)) #Using all default settings (incl dropout of 0.25)- 0.5?
                             
                             #Early stopping callback
                             early_stopping = EarlyStopping(min_delta=0.00,
@@ -141,8 +177,8 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                                                         lr=1e-4,
                                                         weight_decay=1e-4,
                                                         metrics=['accuracy', 'f1score'],
-                                                        accelerator="cpu")
-                    
+                                                        accelerator="cpu")  
+                                         
                             epoch_tracker = EpochTracker() #Define here so it starts at 0.
                             
                             #Train the model with early stopping
