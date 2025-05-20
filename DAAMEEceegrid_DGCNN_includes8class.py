@@ -88,7 +88,10 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                 num_classes = 8
             else:
                 num_classes = 2
-                        
+                
+            label_transform=transforms.Compose([transforms.Select('label'),
+                                                transforms.Mapping(maps[label_idx])])
+            
             dataset_csv_path_thisDim = dataset_csv_path + label_name[:3] + ".csv"
             
             #Load dataset
@@ -96,9 +99,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                                        read_fn = correctReadFn,
                                        offline_transform=offline_transform,
                                        online_transform=online_transform,
-                                       label_transform=transforms.Compose([
-                                       transforms.Select('label'),
-                                       transforms.Mapping(maps[label_idx])]),
+                                       label_transform=label_transform,
                                        num_worker=7,
                                        io_mode="lmdb",
                                        io_path = io_path)
