@@ -5,7 +5,7 @@ import pickle
 
 print("Chance acc and F1 for random classifier using proportions of each class.")
 
-############################################################################################################################################
+###########################################################################################################
 #DAAMEE:
 
 bids_folder = f"./bids_dataset"
@@ -73,7 +73,7 @@ def compute_chance_accuracy_f1(label_counts):
     return {key: {"chance_accuracy": chance_acc[key], "chance_f1": chance_f1[key]}
             for key in ["valence", "arousal", "dominance", "combined"]}
 
-############################################################################################################################################
+###########################################################################################################
 #DAAMEE-s:
     
 exclude_participants_DAAMEE_s = {"sub-04"}
@@ -83,7 +83,7 @@ DAAMEE_s_chanceMetrics = compute_chance_accuracy_f1(DAAMEE_s_labels)
 print("Chance values for DAAMEE-s:")
 print(DAAMEE_s_chanceMetrics)
 
-############################################################################################################################################
+###########################################################################################################
 #DAAMEE-c:
     
 exclude_participants_DAAMEE_c = {"sub-04", "sub-16", "sub-21"}
@@ -93,7 +93,7 @@ DAAMEE_c_chanceMetrics = compute_chance_accuracy_f1(DAAMEE_c_labels)
 print("Chance values for DAAMEE-c:")
 print(DAAMEE_c_chanceMetrics)
 
-############################################################################################################################################
+###########################################################################################################
 #DEAP:
 
 deap_folder = f'./data_preprocessed_python'
