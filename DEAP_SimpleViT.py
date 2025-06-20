@@ -6,19 +6,19 @@ ClassifierTrainer (the latter as of TorchEEG 1.1.3)."""
 import os
 from torcheeg.datasets import DEAPDataset
 from torcheeg import transforms
-from torcheeg.models import CCNN
+from torcheeg.models import SimpleViT
 from torcheeg.trainers import ClassifierTrainer
 from torch.utils.data import DataLoader, Subset
 from pytorch_lightning.callbacks import EarlyStopping
 import numpy as np
+from torcheeg.datasets import DEAPDataset
 from torcheeg.datasets.constants import DEAP_CHANNEL_LOCATION_DICT
 from torcheeg.model_selection import * #NOTE: KFoldGroupbyTrial <== WATCH OUT FOR 'by'/'By'
-from torcheeg import transforms
 import pytorch_lightning as pl #For tracking training epochs
 
 eeg_type = "DEAP"
-model_name = "CCNN"
-model_type = "(CNN)"
+model_name = "SimpleViT"
+model_type = "(Transformer)"
 
 #Define split strategies
 n_splits_KFolds = 10
@@ -56,37 +56,30 @@ class EpochTracker(pl.Callback):
 #Deep learning loop:
 
 #Define model and training for each label
-for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"]):
-        if label_name != "VAD": #In case you only want to focus on one.
-            continue
-        else:
+for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
+   #   if label_name != "valence": #In case you only want to focus on one.
+    #      continue
+     # else:
             
             print(f"\nTraining for {label_name} classification:")
             io_path = f'./cache_{eeg_type}_{label_name}_{model_name}'
-                       
-            if label_name == "VAD":
-                num_classes = 8
-                label_transform = transforms.Compose([transforms.Select(['valence','arousal','dominance']),
-                                                      transforms.Binary(5.0),
-                                                      transforms.BinariesToCategory()])
-            else:
-                num_classes = 2
-                label_transform = transforms.Compose([transforms.Select(label_name),
-                                                      transforms.Binary(5.0)])
-                       
+            
+            label_transform=transforms.Compose([transforms.Select(label_name),
+                                                transforms.Binary(5.0)])
+            
             dataset = DEAPDataset(io_path=io_path,
-                                  root_path=dataset_path,
+                                  root_path='./data_preprocessed_python',
                                   offline_transform=offline_transform,
                                   online_transform=online_transform,
                                   label_transform=label_transform,
                                   num_worker=6)
-            
+                        
             #Ensure results files exist:
             resultsFile = os.path.join(basePath, f"{eeg_type}_Results_{model_name}_{label_name}.tsv")
             epochResultsFile = os.path.join(basePath, f"{eeg_type}_EpochResults_{model_name}_{label_name}.tsv")
             ensure_tsv_header(resultsFile, ["Label", "Split", "Accuracy (%)", "F1-score (%)"])
             ensure_tsv_header(epochResultsFile, ["Label", "Split", "Epochs (Mean)", "Epochs (STD)"])
-
+            
             #Loop over the splits
             for splitname, split in splits.items():
                 print("Solving for ",label_name, " using split: ", splitname)
@@ -125,9 +118,10 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                             test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)                  
                         
                             #Define your model
-                            model = CCNN(num_classes=num_classes,
-                                         in_channels=4,
-                                         grid_size=(9, 9))
+                            model = SimpleViT(chunk_size=128,
+                                              grid_size=(9, 9),
+                                              t_patch_size=32,
+                                              num_classes=2)
                             
                             #Early stopping callback
                             early_stopping = EarlyStopping(min_delta=0.00,
@@ -137,12 +131,12 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                             
                             #Set up the trainer with metrics
                             trainer = ClassifierTrainer(model=model,
-                                                        num_classes=num_classes,
+                                                        num_classes=2,
                                                         lr=1e-4,
                                                         weight_decay=1e-4,
                                                         metrics=['accuracy', 'f1score'],
                                                         accelerator="cpu")
-                    
+                                                
                             epoch_tracker = EpochTracker() #Define here so it starts at 0.
                             
                             #Train the model with early stopping
@@ -163,7 +157,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                 mean_f1score = np.mean(f1scores)*100
                 mean_epochs = np.mean(epochs_per_fold)
                 std_epochs = np.std(epochs_per_fold)
-            
+                        
                 #Write to file:
                 with open(resultsFile, 'a') as f:
                     f.write(f"{label_name}\t{splitname}\t{mean_accuracy:.4f}\t{mean_f1score:.4f}\n")

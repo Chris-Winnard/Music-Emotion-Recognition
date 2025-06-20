@@ -5,10 +5,10 @@ def critical_accuracy_threshold(N, p_chance, alpha=0.05):
     Finds the smallest k such that P(K ≥ k) ≤ alpha
     using the inverse survival function (isf).
     """
-    # binom.isf(q, N, p) returns the smallest x with P(X > x) ≤ q
+    #binom.isf(q, N, p) returns the smallest x with P(X > x) ≤ q
     x = binom.isf(alpha, N, p_chance)
-    k = int(x) + 1  # Because P(X ≥ k) = P(X > k-1) = SF(k-1)
-    return k, k / N  # critical count and corresponding accuracy threshold
+    k = int(x) + 1  #Because P(X ≥ k) = P(X > k-1) = SF(k-1)
+    return k, k / N  #critical count and corresponding accuracy threshold
 
 def dataset_p_values_calculator(datasetInfo_dict, alpha=0.05):
     print(f"{datasetInfo_dict['Name']}:")
@@ -28,7 +28,7 @@ DEAP: N = 32*40*60 = 76800
 DAAMEE-S: 31*16*28 = 13888
 DAAMEE-C: 29*16*28 = 12992"""
 
-alpha = 0.05  # Significance level
+alpha = 0.05  #Significance level
 
 DEAP_info_dict = {"Name":"DEAP",
                   "N":76800,

@@ -1,24 +1,23 @@
-"""Protip: use 'verbose=True/False' to toggle printouts for DEAPDataset, earlyStopping, and 
+"""Protip: use 'verbose=True/False' to toggle printouts for CSVFolderDataset, earlyStopping, and 
 ClassifierTrainer (the latter as of TorchEEG 1.1.3)."""
 
 #Setup:
 
+import numpy as np
 import os
-from torcheeg.datasets import DEAPDataset
+import mne
+from torcheeg.datasets import CSVFolderDataset
 from torcheeg import transforms
-from torcheeg.models import CCNN
+from torcheeg.models import LSTM
 from torcheeg.trainers import ClassifierTrainer
 from torch.utils.data import DataLoader, Subset
 from pytorch_lightning.callbacks import EarlyStopping
-import numpy as np
-from torcheeg.datasets.constants import DEAP_CHANNEL_LOCATION_DICT
 from torcheeg.model_selection import * #NOTE: KFoldGroupbyTrial <== WATCH OUT FOR 'by'/'By'
-from torcheeg import transforms
 import pytorch_lightning as pl #For tracking training epochs
 
-eeg_type = "DEAP"
-model_name = "CCNN"
-model_type = "(CNN)"
+eeg_type = "DAAMEEscalp"
+model_name = "LSTM"
+model_type = "(RNN)"
 
 #Define split strategies
 n_splits_KFolds = 10
@@ -29,11 +28,16 @@ splits = {"KFold": KFold(n_splits=n_splits_KFolds, shuffle=True),
           "LeaveOneSubjectOut":LeaveOneSubjectOut()}
 
 #For dataset initialization:
-dataset_path = './data_preprocessed_python'
-offline_transform=transforms.Compose([transforms.BandDifferentialEntropy(apply_to_baseline=True),
-                                      transforms.ToGrid(DEAP_CHANNEL_LOCATION_DICT, apply_to_baseline=True)])
-online_transform=transforms.Compose([transforms.BaselineRemoval(),
-                                     transforms.ToTensor()])
+def correctReadFn(file_path, **kwargs): #NOTE: IT FAILS WHEN ONLY ONE EPOCH PER FILE
+    file_path = file_path.replace("\\", "/")
+    raw = mne.io.read_raw(file_path)
+    #Convert raw to epochs
+    epochs = mne.make_fixed_length_epochs(raw, duration=1.015) #ASSUMING TRIMMED TO 28.42S
+    #Return EEG data
+    return epochs
+dataset_csv_path = './dataConverted_norm/dataset_'#"./dataConverted_normNotchFilt/dataset_"
+online_transform=transforms.ToTensor()
+maps = [{'HV': 1, 'LV': 0}, {'HA': 1, 'LA': 0}, {'HD': 1, 'LD': 0}]
 
 #Setup for later creating results files:
 basePath = os.getcwd()
@@ -42,7 +46,6 @@ def ensure_tsv_header(file_path, header_fields): #To ensure files exist and chec
         with open(file_path, 'w') as f:
             f.write("\t".join(header_fields) + "\n")
 
-#Custom callback to track epochs
 class EpochTracker(pl.Callback):
     def __init__(self):
         super().__init__()
@@ -56,37 +59,37 @@ class EpochTracker(pl.Callback):
 #Deep learning loop:
 
 #Define model and training for each label
-for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"]):
-        if label_name != "VAD": #In case you only want to focus on one.
-            continue
-        else:
+for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
+#      if label_name != "valence": #In case you only want to focus on one.
+ #         continue
+  #    else:
             
             print(f"\nTraining for {label_name} classification:")
             io_path = f'./cache_{eeg_type}_{label_name}_{model_name}'
-                       
-            if label_name == "VAD":
-                num_classes = 8
-                label_transform = transforms.Compose([transforms.Select(['valence','arousal','dominance']),
-                                                      transforms.Binary(5.0),
-                                                      transforms.BinariesToCategory()])
-            else:
-                num_classes = 2
-                label_transform = transforms.Compose([transforms.Select(label_name),
-                                                      transforms.Binary(5.0)])
-                       
-            dataset = DEAPDataset(io_path=io_path,
-                                  root_path=dataset_path,
-                                  offline_transform=offline_transform,
-                                  online_transform=online_transform,
-                                  label_transform=label_transform,
-                                  num_worker=6)
+            
+            dataset_csv_path_thisDim = dataset_csv_path + label_name[:3] + ".csv"
+            
+            label_transform=transforms.Compose([transforms.Select('label'),
+                                                transforms.Mapping(maps[label_idx])])
+            #Load dataset
+            dataset = CSVFolderDataset(io_path=io_path,
+                                       csv_path=dataset_csv_path_thisDim,    
+                                       read_fn = correctReadFn,
+                                       online_transform=online_transform,
+                                       label_transform=label_transform,
+                                       num_worker=6,
+                                       io_mode="lmdb")
+            
+            dataset.info['subject_id'] = dataset.info['id'].str.extract(r'(sub-\d+)')
+            dataset.info['trial_id'] = dataset.info.index // 28
+            trial_counts = dataset.info.groupby('trial_id').size()
             
             #Ensure results files exist:
             resultsFile = os.path.join(basePath, f"{eeg_type}_Results_{model_name}_{label_name}.tsv")
             epochResultsFile = os.path.join(basePath, f"{eeg_type}_EpochResults_{model_name}_{label_name}.tsv")
             ensure_tsv_header(resultsFile, ["Label", "Split", "Accuracy (%)", "F1-score (%)"])
             ensure_tsv_header(epochResultsFile, ["Label", "Split", "Epochs (Mean)", "Epochs (STD)"])
-
+            
             #Loop over the splits
             for splitname, split in splits.items():
                 print("Solving for ",label_name, " using split: ", splitname)
@@ -95,9 +98,9 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                 accuracies = []
                 f1scores = []
                 epochs_per_fold = []
-                
+
                 if isinstance(split, LeaveOneSubjectOut):
-                    n_splits = 32#len(dataset.info['subject_id'].unique())  #Num of subjs
+                    n_splits = len(dataset.info['subject_id'].unique())  #Num of subjs
                 else:
                     n_splits = n_splits_KFolds  #Default value for other strategies
         
@@ -124,10 +127,9 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                             val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
                             test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)                  
                         
+                        
                             #Define your model
-                            model = CCNN(num_classes=num_classes,
-                                         in_channels=4,
-                                         grid_size=(9, 9))
+                            model = LSTM(num_electrodes=32, hid_channels=64, num_classes=2)
                             
                             #Early stopping callback
                             early_stopping = EarlyStopping(min_delta=0.00,
@@ -137,7 +139,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                             
                             #Set up the trainer with metrics
                             trainer = ClassifierTrainer(model=model,
-                                                        num_classes=num_classes,
+                                                        num_classes=2,
                                                         lr=1e-4,
                                                         weight_decay=1e-4,
                                                         metrics=['accuracy', 'f1score'],
@@ -163,7 +165,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance", "VAD"
                 mean_f1score = np.mean(f1scores)*100
                 mean_epochs = np.mean(epochs_per_fold)
                 std_epochs = np.std(epochs_per_fold)
-            
+                        
                 #Write to file:
                 with open(resultsFile, 'a') as f:
                     f.write(f"{label_name}\t{splitname}\t{mean_accuracy:.4f}\t{mean_f1score:.4f}\n")

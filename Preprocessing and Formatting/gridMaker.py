@@ -29,14 +29,14 @@ grid_resolution = (9, 9)
 grid_coords = np.floor(normalized_coords * np.array(grid_resolution)).astype(int)
 grid_coords = np.clip(grid_coords, 0, np.array(grid_resolution) - 1)
 
-# Create an empty grid filled with placeholders ('-')
+#Create an empty grid filled with placeholders ('-')
 grid = [['-' for _ in range(grid_resolution[1])] for _ in range(grid_resolution[0])]
 
-# Map electrodes to grid
+#Map electrodes to grid
 for electrode, (x, y) in zip(electrodes, grid_coords):
     grid[x][y] = electrode
 
-# Display the grid as a nested list
+#Display the grid as a nested list
 for i, row in enumerate(grid):
     if i == 0:
         print('[', row, ',')

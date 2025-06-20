@@ -20,38 +20,29 @@ eeg_type = "DEAP"
 model_name = "Vanilla Transformer"
 model_type = "(Transformer)"
 
-#Paths
-dataset_path = './data_preprocessed_python'
-
-
-n_splits_KFolds = 10
 #Define split strategies
+n_splits_KFolds = 10
 splits = {"KFold": KFold(n_splits=n_splits_KFolds, shuffle=True),
           "KFoldGroupbyTrial": KFoldGroupbyTrial(n_splits=n_splits_KFolds, shuffle=True),
           "KFoldCrossTrial": KFoldCrossTrial(n_splits=n_splits_KFolds, shuffle=True),
           "KFoldCrossSubject":KFoldCrossSubject(n_splits=n_splits_KFolds, shuffle=True),
           "LeaveOneSubjectOut":LeaveOneSubjectOut()}
 
-basePath = os.getcwd()
-#Ensure files exist, check contents:
-resultsFile = os.path.join(basePath, f"{eeg_type}_Results_{model_name}_VAD.tsv")
-epochResultsFile = os.path.join(basePath, f"{eeg_type}_EpochResults_{model_name}_VAD.tsv")
+#For dataset initialization:
+dataset_path = './data_preprocessed_python'
+online_transform=transforms.ToTensor()
 
-# Setup for TSV output
-def ensure_tsv_header(file_path, header_fields):
+#Setup for later creating results files:
+basePath = os.getcwd()
+def ensure_tsv_header(file_path, header_fields): #To ensure files exist and check contents
     if not os.path.exists(file_path):
         with open(file_path, 'w') as f:
             f.write("\t".join(header_fields) + "\n")
 
-ensure_tsv_header(resultsFile, ["Label", "Split", "Accuracy (%)", "F1-score (%)"])
-ensure_tsv_header(epochResultsFile, ["Label", "Split", "Epochs (Mean)", "Epochs (STD)"])
-
-online_transform=transforms.ToTensor()
-
 class EpochTracker(pl.Callback):
     def __init__(self):
         super().__init__()
-        self.epochs = 0  
+        self.epochs = 0
 
     def on_train_epoch_end(self, trainer, pl_module):
         self.epochs += 1
@@ -77,6 +68,12 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
                       online_transform=online_transform,
                       label_transform=label_transform,
                       num_worker=6)
+                        
+            #Ensure results files exist:
+            resultsFile = os.path.join(basePath, f"{eeg_type}_Results_{model_name}_{label_name}.tsv")
+            epochResultsFile = os.path.join(basePath, f"{eeg_type}_EpochResults_{model_name}_{label_name}.tsv")
+            ensure_tsv_header(resultsFile, ["Label", "Split", "Accuracy (%)", "F1-score (%)"])
+            ensure_tsv_header(epochResultsFile, ["Label", "Split", "Epochs (Mean)", "Epochs (STD)"])
             
             #Loop over the splits
             for splitname, split in splits.items():
@@ -102,9 +99,10 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
                     
                             #Find overlapping clip_ids between train_val and train_test
                             overlapping_clip_ids = set(train_val_clip_ids).intersection(train_test_clip_ids)                          
+                            
                             #Filter train_test indices for overlapping clip_ids
-                            train_indices = [idx for idx, row in train_test_dataset.info.iterrows()
-                                             if row['clip_id'] in overlapping_clip_ids]
+                            train_indices = train_test_dataset.info.index[train_test_dataset.info['clip_id']
+                                                                          .isin(overlapping_clip_ids)].tolist()
 
                             #Create datasets
                             train_dataset = Subset(train_test_dataset, train_indices)
@@ -113,7 +111,6 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
                             train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
                             val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
                             test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)                  
-                        
                         
                             #Define your model
                             model = VanillaTransformer(chunk_size=128,
@@ -143,7 +140,8 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance"]):
                             epoch_tracker = EpochTracker() #Define here so it starts at 0.
                             
                             #Train the model with early stopping
-                            trainer.fit(train_loader, val_loader, max_epochs=50, callbacks=[early_stopping,epoch_tracker])
+                            trainer.fit(train_loader, val_loader, max_epochs=50,
+                                        callbacks=[early_stopping,epoch_tracker])
                             epochs_per_fold.append(epoch_tracker.epochs)
 
                             #Test the model
