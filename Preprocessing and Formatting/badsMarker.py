@@ -26,7 +26,8 @@ def badsMarker(eeg_raw, sub, eeg_type, task):
     else:
         badsList = [chan.strip() for chan in badsList.split(",")]
 
-    #Filter to include only channels present in eeg_raw. E.g., Fpz may have been removed from ceegrid data
+    #Filter to include only channels present in eeg_raw. E.g., Fpz may have been
+    #removed from ceegrid data
     existing_channels = eeg_raw.info["ch_names"]
     badsList = [chan for chan in badsList if chan in existing_channels]
     
