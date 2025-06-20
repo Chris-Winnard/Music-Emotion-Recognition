@@ -170,7 +170,8 @@ for subject in para.allSub:
         eeg_preprocessed = eeg_filtered
 
     #Events and epoching
-    pathToEventsFile = Path(para.bidsRoot) / subjFolder / 'eeg' / f'{subjFolder}_task-{para.task}_acq-{para.eeg_type}_events.tsv'
+    pathToEventsFile = (Path(para.bidsRoot) / subjFolder / 'eeg' /
+                        f'{subjFolder}_task-{para.task}_acq-{para.eeg_type}_events.tsv')
     eventsData = pd.read_csv(pathToEventsFile, sep='\t')
     eventsArray = np.column_stack([(eventsData['onset'] * para.eegFs).astype(int),
                                    np.zeros(len(eventsData), dtype=int), eventsData['value']])
