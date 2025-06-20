@@ -4,9 +4,9 @@ import mne
 "If choosing to remove channels from DAAMEE which were thought to be noisier."
 
 def badsMarker(eeg_raw, sub, eeg_type, task):
-    channelRemovalRecord = f'./Channel Removal Record.xlsx'
+    lowerQualityChannels = f'./bids_dataset/derivatives/lowerQualityChannels.tsv'
     
-    df = pd.read_excel(channelRemovalRecord)
+    df = pd.read_csv(lowerQualityChannels, sep='\t')
     columnOfInterest = "Chans to remove (eeg_type=" + eeg_type + ", task=" + task + "):"
     
     if columnOfInterest not in df.columns:
