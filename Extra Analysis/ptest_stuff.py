@@ -5,7 +5,8 @@ def critical_accuracy_threshold(N, p_chance, alpha=0.05):
     Finds the smallest k such that P(K ≥ k) ≤ alpha
     using the inverse survival function (isf).
     """
-    #binom.isf(q, N, p) returns the smallest x with P(X > x) ≤ q
+    #As a first step, binom.isf(q, N, p) returns the smallest x with P(X > x) ≤ q (where x + 1
+    #will be k)
     x = binom.isf(alpha, N, p_chance)
     k = int(x) + 1  #Because P(X ≥ k) = P(X > k-1) = SF(k-1)
     return k, k / N  #critical count and corresponding accuracy threshold
