@@ -3,8 +3,7 @@
 
 cff-version: 1.2.0
 title: >-
-  Decoding Auditory Attention and Musical Emotions with
-  Ear-EEG (DAAMEE) Experiment Materials 
+  Music Emotion Recognition
 message: >-
   If you use these materials, please cite using the metadata from this file.
   Funding is provided by UKRI and EPSRC through the "UKRI Centre for Doctoral
@@ -27,10 +26,14 @@ abstract: >-
   splitting techniques. Set up for the DEAP and DAAMEE datasets.
 keywords:
   - Deep learning
+  - Affect decoding
+  - Emotion decoding
+  - EEG
+  - DEAP dataset
 license: MIT
-commit: officialRelease1.1.0
-version: 1.1.0
-date-released: '2025-08-05'
+commit: officialRelease1.1.2
+version: 1.1.2
+date-released: '2025-08-07'
 references:
  - type: article
    authors:
