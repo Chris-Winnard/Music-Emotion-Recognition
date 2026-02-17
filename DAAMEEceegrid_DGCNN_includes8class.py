@@ -73,7 +73,7 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
             print(f"\nTraining for {label_name} classification:")
             io_path = f'./cache_{eeg_type}_{label_name}_{model_name}'
             
-            if label_name == "valence":
+            if label_name == "VAD":
                 num_classes = 8
             else:
                 num_classes = 2
@@ -188,4 +188,5 @@ for label_idx, label_name in enumerate(["valence", "arousal", "dominance","VAD"]
                     f.write(f"{label_name}\t{splitname}\t{mean_accuracy:.4f}\t{mean_f1score:.4f}\n")
         
                 with open(epochResultsFile, 'a') as f:
+
                     f.write(f"{label_name}\t{splitname}\t{mean_epochs:.2f}\t{std_epochs:.2f}\n")
